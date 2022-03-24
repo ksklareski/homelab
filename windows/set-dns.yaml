@@ -1,0 +1,24 @@
+---
+- name: Check if internal dns is working
+  ansible.windows.win_command: powershell -c "if(!((resolve-dnsname -name google.com -server 192.168.1.2 -DnsOnly) -or (resolve-dnsname -name google.com -server 192.168.1.2 -DnsOnly))) {exit 1}"
+  ignore_errors: true
+  register: dnslookup
+
+- name: Setting external dns
+  set_fact:
+    ns_1: 1.1.1.1
+    ns_2: 8.8.8.8
+  when: dnslookup.rc != 0
+
+- name: Setting internal dns
+  set_fact:
+    ns_1: 192.168.1.2
+    ns_2: 192.168.1.3
+  when: dnslookup.rc == 0
+
+- name: Set DNS
+  ansible.windows.win_dns_client:
+    adapter_names: '*External Switch*'
+    ipv4_addresses:
+    - "{{ ns_1 }}"
+    - "{{ ns_2 }}"

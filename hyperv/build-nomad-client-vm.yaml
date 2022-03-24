@@ -1,0 +1,5 @@
+- name: Build nomad vm
+  ansible.windows.win_command: powershell.exe -c "if(!(ls 'Z:\packer\artifacts\nomad\Virtual Hard Disks\nomad-client.vhdx')) { cd Z:/packer/builds/nomad; packer build -force Z:/packer/builds/nomad/nomad-vm-ubuntu.pkr.hcl }"
+
+- name: Rename vm disk file
+  ansible.windows.win_command: powershell -c "if(!(ls 'Z:/packer/artifacts/nomad/Virtual Hard Disks/nomad-client.vhdx')) { mv 'Z:/packer/artifacts/nomad/Virtual Hard Disks/ubuntu-20-base.vhdx' 'Z:/packer/artifacts/nomad/Virtual Hard Disks/nomad-client.vhdx' }"

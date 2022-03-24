@@ -1,0 +1,51 @@
+---
+# This playbook enables and configures Hyper-V on Windows hosts
+
+- name: Set Execution Policy Bypass
+  ansible.windows.win_powershell:
+    script: |
+      Set-ExecutionPolicy Bypass -Force
+
+- name: Install HyperV
+  ansible.windows.win_optional_feature:
+    name: Microsoft-Hyper-V
+    include_parent: True
+    state: present
+  register: hyperv
+
+- name: Reboot if installing Hyper-V feature requires it
+  ansible.windows.win_reboot:
+  when: hyperv.reboot_required
+
+- name: Enable NuGet Provider
+  ansible.windows.win_powershell:
+    script: |
+      Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 -Force
+
+- name: Add xHyper-V PS Module
+  community.windows.win_psmodule:
+    name: xHyper-V
+    state: present
+
+- name: Configure Hyper-V Host File Paths
+  ansible.windows.win_dsc:
+    resource_name: xVMHost
+    IsSingleInstance: 'Yes'
+    EnableEnhancedSessionMode: true
+    VirtualHardDiskPath: '{{  hyperv_vm_drive_dir }}'
+    VirtualMachinePath: '{{ hyperv_vm_dir }}'
+
+# If a new external switch is created the connection will temporarily go down
+- name: Configure Hyper-V Host External Network Switch
+  ansible.windows.win_dsc:
+    resource_name: xVMSwitch
+    Name: '{{ hyperv_external_switch_name }}'
+    Type: External
+    NetAdapterName: '{{ hyperv_external_switch_adapter_name }}'
+    AllowManagementOS: true
+    Ensure: Present
+  ignore_errors: yes
+
+- name: Wait for system to become reachable after creation of external switch
+  wait_for_connection:
+    timeout: 120

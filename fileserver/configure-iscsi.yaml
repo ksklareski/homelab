@@ -1,0 +1,24 @@
+- name: Install ntfs deps
+  ansible.builtin.yum:
+    name:
+      - scsi-target-utils
+    state: present
+
+- name: Create a vg on top of the pv and maximize the size
+  community.general.lvg:
+    vg: '{{ nfs_vg_name }}'
+    pvs: "{{ pvs }}"
+    pvresize: true
+    state: present
+
+- name: Create a lv on top of NFS vg and maximize the size
+  community.general.lvol:
+    vg: '{{ nfs_vg_name }}'
+    lv: '{{ nfs_lv_name }}'
+    size: 100%FREE
+    pvs: "{{ pvs }}"
+    shrink: false
+    opts:  --mirrors 1 --type raid1
+    state: present
+
+# TODO: Create ISCSI lun

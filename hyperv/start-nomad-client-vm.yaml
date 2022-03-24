@@ -1,0 +1,115 @@
+---
+- name: Find vm disk
+  ansible.windows.win_shell: |
+    ls "{{  hyperv_vm_drive_dir }}/nomad-client.vhdx"
+  register: finddisk
+  ignore_errors: true
+
+- name: Copy vm disk
+  ansible.windows.win_command: powershell.exe -c "cp 'Z:/packer/artifacts/nomad/Virtual Hard Disks/nomad-client.vhdx' '{{  hyperv_vm_drive_dir }}/nomad-client.vhdx'"
+  when: finddisk.rc != 0
+
+- name: Check if nomad vm exists
+  ansible.windows.win_command: powershell.exe -c "get-vm -name {{ nomad_init_hostname }}"
+  ignore_errors: true
+  register: findvm
+
+- name: Ensure nomad client vm exists
+  ansible.windows.win_dsc:
+    resource_name: xVMHyperV
+    Name: nomad-client-1
+    VHDPath: "{{  hyperv_vm_drive_dir }}/nomad-client.vhdx"
+    SwitchName: "External Switch"
+    State: "Off"
+    Path: "{{ hyperv_vm_dir }}"
+    Generation: 1
+    SecureBoot: false
+    # Mebibyte -> Byte
+    StartupMemory: 1073741824
+    MinimumMemory: 536870912
+    MaximumMemory: 4294967296
+    ProcessorCount: 2
+    WaitForIP: true
+    RestartIfNeeded: false
+    Ensure: Present
+    EnableGuestService: true
+  when: findvm.rc != 0
+
+- name: Check if secondary NIC exists
+  ansible.windows.win_command: powershell.exe -c "get-vmnetworkadapter -vmname 'nomad-client-1' -name 'Container NIC'"
+  ignore_errors: true
+  register: findnic
+
+- name: Ensure network nics exist
+  ansible.windows.win_dsc:
+    resource_name: xVMNetworkAdapter
+    Id: Container NIC
+    Name: Container NIC
+    SwitchName: External Switch
+    VMName: nomad-client-1
+  when: findnic.rc != 0
+
+- name: Allow mac address spoofing on container nic
+  ansible.windows.win_command: powershell.exe -c "Set-VMNetworkAdapter -VMName nomad-client-1 -Name 'Container NIC' -MacAddressSpoofing On"
+
+- name: Template cloud-init meta-data
+  ansible.builtin.template:
+    src: "./packer/nomad/{{ item }}.j2"
+    dest: "./packer/nomad/{{ item }}"
+  delegate_to: localhost
+  loop:
+    - meta-data
+    - user-data
+  when: findvm.rc != 0
+
+- name: Create cidata iso
+  community.general.iso_create:
+    src_files:
+      - ./packer/nomad/meta-data
+      - ./packer/nomad/user-data
+    dest_iso: ./packer/nomad/cidata.iso
+    interchange_level: 4
+    vol_ident: CIDATA
+  delegate_to: localhost
+  when: findvm.rc != 0
+
+- name: Copy iso to host
+  ansible.windows.win_copy:
+    src: ./packer/nomad/cidata.iso
+    dest: Z:/temp/cidata.iso
+  when: findvm.rc != 0
+
+- name: Remove temp files from controller
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: absent
+  delegate_to: localhost
+  loop:
+    - ./packer/nomad/meta-data
+    - ./packer/nomad/user-data
+    - ./packer/nomad/cidata.iso
+
+- name: Attach iso to nomad vm
+  ansible.windows.win_dsc:
+    resource_name: xVMDvdDrive
+    VMName: nomad-client-1
+    ControllerNumber: 1
+    ControllerLocation: 0
+    Path: Z:/temp/cidata.iso
+  when: findvm.rc != 0
+
+- name: Start nomad vm
+  ansible.windows.win_dsc:
+    resource_name: xVMHyperV
+    Name: nomad-client-1
+    VHDPath: "{{  hyperv_vm_drive_dir }}/nomad-client.vhdx"
+    State: "Running"
+    RestartIfNeeded: false
+    WaitForIP: true
+
+- name: Wait for new ip to come up
+  ansible.builtin.wait_for:
+    host: "{{ nomad_init_ip }}"
+    port: 22
+    delay: 5
+  delegate_to: localhost

@@ -1,0 +1,14 @@
+TYPE=Ethernet
+DEVICE={{ ansible_default_ipv4.interface }}
+ONBOOT=yes
+BOOTPROTO=none
+DEFROUTE=yes
+IPV4_FAILURE_FATAL=no
+IPV6INIT=no
+IPV6_AUTOTUNNEL=no
+IPADDR={{ ansible_host }}
+PREFIX=24
+GATEWAY={{ gateway_ip }}
+DNS1={{ dns_1 }}
+DNS2={{ dns_2 }}
+PROMISC=yes

@@ -1,0 +1,116 @@
+- name: Set external dns facts
+  ansible.builtin.set_fact:
+    ns_1: 1.1.1.1
+    ns_2: 8.8.8.8
+
+- name: Change resolv.conf
+  ansible.builtin.command: bash -c "echo 'nameserver {{ ns_1 }}' > /etc/resolv.conf && echo 'nameserver {{ ns_2 }}' >> /etc/resolv.conf"
+
+- name: Set dns externally
+  ansible.builtin.template:
+    src: ./nomad/netcfg.j2
+    dest: /etc/netplan/01-netcfg.yaml
+  register: ifcfg
+
+- name: Apply netplan config
+  ansible.builtin.command: netplan apply
+  when: ifcfg.changed
+
+- name: Remove old nomad server dirs
+  ansible.builtin.command: bash -c "rm -rf /tmp/nomad-server-*"
+
+# Run regular nomad config
+- include_tasks: './nomad/nomad.yaml'
+
+- name: Ensure the docker compose project isnt running
+  community.docker.docker_compose:
+    project_src: /tmp/nomad
+    state: absent
+    remove_orphans: true
+  register: dockercompose
+  when: nomaddir.changed
+
+- name: Start temporary nomad server
+  community.docker.docker_compose:
+    project_src: /tmp/nomad
+    remove_orphans: true
+  when: dockercompose is defined
+
+- name: Wait for temp nomad server to be up
+  ansible.builtin.wait_for:
+    host: 192.168.1.221
+    port: 4646
+    delay: 5
+
+- name: Copy nomad init client config
+  ansible.builtin.copy:
+    dest: '/etc/nomad.d/client.hcl'
+    src: ./nomad/client-init.hcl
+  register: nomadclient
+
+- name: Start nomad client
+  ansible.builtin.command: service nomad restart
+
+- name: Start registry container
+  ansible.builtin.command: bash -c "sleep 15 && (nomad job inspect -address=http://192.168.1.221:4646 registry || nomad job run -address=http://192.168.1.221:4646 /tmp/nomad/registry.nomad)"
+  when: dockercompose is defined
+  ignore_errors: true
+
+- name: Wait for registry to be up
+  ansible.builtin.wait_for:
+    host: 192.168.1.231
+    port: 5000
+    delay: 5
+
+- name: Build dns docker container
+  ansible.builtin.command: bash -c "cd /tmp/packer/dnsmasq && (packer validate dnsmasq.pkr.hcl || packer init dnsmasq.pkr.hcl); packer build -var='registy_addr=192.168.1.231' -force dnsmasq.pkr.hcl"
+
+- name: Start dns containers
+  ansible.builtin.command: bash -c "nomad job inspect -address=http://192.168.1.221:4646 dns || nomad job run -address=http://192.168.1.221:4646 /tmp/nomad/dns.nomad"
+
+- name: Wait for dns to be up
+  ansible.builtin.wait_for:
+    host: 192.168.1.2
+    port: 53
+    delay: 5
+
+- name: Set internal dns facts
+  ansible.builtin.set_fact:
+    ns_1: 192.168.1.2
+    ns_2: 192.168.1.3
+
+- name: Copy internal DNS config
+  ansible.builtin.template:
+    src: ./nomad/netcfg.j2
+    dest: /etc/netplan/01-netcfg.yaml
+  register: ifcfg
+
+- name: Apply netplan config
+  ansible.builtin.command: netplan apply
+  when: ifcfg.changed
+
+- name: Change resolv.conf
+  ansible.builtin.command: bash -c "echo 'nameserver {{ ns_1 }}' > /etc/resolv.conf && echo 'nameserver {{ ns_2 }}' >> /etc/resolv.conf"
+
+- name: Build dns docker container (again)
+  ansible.builtin.command: bash -c "cd /tmp/packer/dnsmasq && (packer validate dnsmasq.pkr.hcl || packer init dnsmasq.pkr.hcl); packer build -force dnsmasq.pkr.hcl"
+
+- name: Copy nomad init client config
+  ansible.builtin.copy:
+    dest: '/etc/nomad.d/client.hcl'
+    src: ./nomad/client.hcl
+  register: nomadclient
+
+- name: Start nomad client with permanent config
+  ansible.builtin.command: service nomad restart
+
+- name: Build nomad server docker container
+  ansible.builtin.command: bash -c "docker image inspect registry:5000/nomad-server:ubuntu && docker push registry:5000/nomad-server:ubuntu || (cd /tmp/packer/nomad && (packer validate nomad-docker.pkr.hcl || packer init nomad-docker.pkr.hcl); packer build -force nomad-docker.pkr.hcl)"
+
+- name: Start nomad servers 2 & 3
+  ansible.builtin.command: bash -c "nomad job inspect -address=http://nomad-server-1:4646 nomad-server || nomad job run -address=http://nomad-server-1:4646 /tmp/nomad/nomad-server-init.nomad"
+  ignore_errors: true
+
+- name: Start all servers in nomad
+  ansible.builtin.command: bash -c "docker-compose -f /tmp/nomad/docker-compose.yaml down && sleep 5 && nomad job run -address=http://nomad-server-2:4646 /tmp/nomad/nomad-server.nomad"
+  ignore_errors: true

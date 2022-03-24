@@ -1,0 +1,40 @@
+---
+- name: Configure Linux Machines
+  hosts: linux
+  gather_facts: true
+  tags: config_linux
+  tasks:
+    - include_tasks: './linux/set-dns.yaml'
+    - include_tasks: './linux/configure-linux.yaml'
+
+# - name: Configure Storage Machines
+#   hosts: storage
+#   gather_facts: false
+#   tags: config_storage
+#   tasks:
+#     - include_tasks: './fileserver/configure-iscsi.yaml'
+
+- name: Configure Windows Machines
+  hosts: windows
+  gather_facts: no
+  tags: config_win
+  tasks:
+    - include_tasks: './windows/set-dns.yaml'
+    - include_tasks: './windows/set-windows-hostname.yaml'
+    - include_tasks: './windows/enable-rdp.yaml'
+
+- name: Configure Hyper-V Hosts
+  hosts: hyperv
+  gather_facts: no
+  tags: config_hyperv
+  tasks:
+    - include_tasks: './hyperv/configure-hyperv.yaml'
+
+    - name: Connect to ISCSI target
+      ansible.windows.win_command: powershell.exe -c "if (!(Get-IscsiTarget -NodeAddress iqn.2022-01.local.sklareski.nfs:data).IsConnected) {Connect-IscsiTarget -NodeAddress iqn.2022-01.local.sklareski.nfs:data}"
+
+    - include_tasks: './hyperv/configure-packer.yaml'
+
+    # NOTE: Build is run once, artifacts available to all vm hosts
+    - include_tasks: './hyperv/build-rocky8-vm.yaml'
+      run_once: true

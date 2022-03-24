@@ -1,0 +1,62 @@
+- name: Create a vg on top of the pv and maximize the size
+  community.general.lvg:
+    vg: '{{ nfs_vg_name }}'
+    pvs: /dev/sda
+    pvresize: true
+    state: present
+
+- name: Create a lv on top of NFS vg and maximize the size
+  community.general.lvol:
+    vg: '{{ nfs_vg_name }}'
+    lv: '{{ nfs_lv_name }}'
+    size: 100%FREE
+    pvs: /dev/sda
+    shrink: false
+    state: present
+
+- name: Install epel
+  ansible.builtin.yum:
+    name: epel-release
+    state: present
+
+- name: Install ntfs deps
+  ansible.builtin.yum:
+    name:
+      - ntfsprogs
+      - ntfs-3g
+    state: present
+
+- name: Put ntfs filesystem on lv
+  ansible.builtin.command: 'mkfs.ntfs -f /dev/{{ nfs_vg_name }}/{{ nfs_lv_name }}'
+
+- name: Ensure NFS export directory exists
+  ansible.builtin.file: 'path={{ item }} state=directory mode=0775'
+  with_items:
+    - '{{ nfs_export_dir }}'
+
+- name: Mount the NFS lv on the export directory
+  mount:
+    boot: true
+    path: '{{ nfs_export_dir }}'
+    src: '/dev/{{ nfs_vg_name }}/{{ nfs_lv_name }}'
+    fstype: '{{ nfs_filesystem_type }}'
+    state: mounted
+
+- name: Install NFS
+  yum:
+    name: nfs-utils
+    state: present
+  register: nfsinstall
+
+- name: Configure NFS exports
+  ansible.builtin.copy:
+    src: ./exports
+    dest: /etc/exports
+  register: exports
+
+- name: Start NFS service
+  ansible.builtin.service:
+    name: nfs-server
+    state: restarted
+    enabled: true
+  when: nfsinstall.changed or exports.changed

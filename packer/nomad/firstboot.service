@@ -1,0 +1,12 @@
+[Unit]
+Description=My First Boot Script
+# ConditionFirstBoot=yes
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/bin/bash /root/mount_cd.sh >> /var/log/firstboot.log
+
+[Install]
+WantedBy=multi-user.target

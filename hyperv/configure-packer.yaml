@@ -1,0 +1,23 @@
+- name: Install packer
+  win_chocolatey:
+    name: packer
+    version: '{{ packer_version }}'
+    source: '{{ choco_repo }}'
+    state: present
+
+- name: Ensure packer dir exists
+  ansible.windows.win_file:
+    path: '{{ packer_home_dir }}'
+    state: directory
+
+- name: Set packer home
+  ansible.windows.win_environment:
+    level: machine
+    variables:
+      PACKER_CONFIG_DIR: '{{ packer_home_dir }}'
+      PACKER_HOME_DIR: '{{ packer_home_dir }}'
+
+- name: Copy build directories
+  ansible.windows.win_copy:
+    dest: '{{ packer_home_dir }}/builds'
+    src: ./packer/

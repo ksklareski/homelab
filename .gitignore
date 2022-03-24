@@ -1,0 +1,6 @@
+.DS_STORE
+cloudstack_archive/
+.env
+TODO
+*.iso
+*.bak

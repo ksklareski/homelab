@@ -1,0 +1,15 @@
+---
+docker_version: 4.4.4
+hyperv_vm_drive_dir: 'Z:/Hyper-V VMs/Virtual Hard Disks'
+hyperv_vm_dir: 'Z:/Hyper-V VMs'
+hyperv_external_switch_name: 'External Switch'
+hyperv_external_switch_adapter_name: 'Ethernet'
+lxrunoffline_version: 3.5.0
+nomad_files_dir: 'Z:/code/nomad'
+nomad_version: 1.2.4
+packer_home_dir: Z:/packer
+packer_version: 1.7.8
+public_key: ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQCwYPrGI/IVpMXcBN3CMbH4NQ63fCKVJg4j/YIxN4XLOjJm5M9q4TNUxsr2HtKbFL3isGdZrK9bSXiKN38LSvHJMUpk3T03A+jRz704ix73X4kxaYC89nepN9WBrEbAwUX5Gae1m3BasM8w8N1Tv2ata7CBK8NPE6YAN8EN5RRifIboabVagyt/6fKLK2v1Xq3VYdG5FdNR/+78nurPKfXrxEgeCsxRB+78zpQJCAJni2iCmSfW58hS1g61PKQs9sMMt9erGo3AS/I63iBfVg9koYn+McvMpgxM/GBUXl13SdzK8YpPOu1muo3DFHobg4ROlk62DuYGbCoIzIWWnpel kylesklareski@icinga-master
+wsl_host: Ubuntu-20.04
+wsl_ports: 22,4646,4647,4648
+wsl_kernel_path: https://wslstorestorage.blob.core.windows.net/wslblob/wsl_update_x64.msi

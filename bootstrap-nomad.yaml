@@ -1,0 +1,53 @@
+---
+- name: Build nomad client vm
+  hosts: hyperv
+  gather_facts: no
+  tags: config_hyperv
+  tasks:
+    - include_tasks: './hyperv/build-nomad-client-vm.yaml'
+      run_once: true
+
+    - include_tasks: './hyperv/start-nomad-client-vm.yaml'
+      run_once: true
+
+    - name: Readd nomad client
+      add_host:
+        hostname: "{{ nomad_init_hostname }}"
+        groups: nomad_clients
+
+# BUG: This skips unless nomad-client-1 is up initially
+- name: Bootstrap nomad servers (this should only run against one single node)
+  hosts: nomad_clients
+  gather_facts: true
+  tags: bootstrap_nomad
+  tasks:
+    - name: Check if nomad cluster is running
+      ansible.builtin.command: bash -c "nomad --version && (nomad job status -address=http://192.168.1.221:4646 nomad-server || nomad job status -address=http://192.168.1.222:4646 nomad-server || nomad job status -address=http://192.168.1.223:4646 nomad-server)"
+      ignore_errors: true
+      register: nomadbootstrap
+      run_once: true
+
+    - include_tasks: './nomad/nomad-bootstrap.yaml'
+      when: nomadbootstrap.rc != 0
+      run_once: true
+
+- name: Configure nomad servers
+  hosts: nomad_clients
+  gather_facts: false
+  tags: config_nomad
+  tasks:
+    - include_tasks: './nomad/nomad.yaml'
+
+- name: Set Linux machines to use internal dns
+  hosts: linux
+  gather_facts: false
+  tags: dns_linux
+  tasks:
+    - include_tasks: './linux/set-dns.yaml'
+
+- name: Set Windows machines to use internal dns
+  hosts: windows
+  gather_facts: false
+  tags: dns_windows
+  tasks:
+    - include_tasks: './windows/set-dns.yaml'

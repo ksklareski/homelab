@@ -1,0 +1,5 @@
+---
+nfs_vg_name: nfs-vg
+nfs_lv_name: nfs-lv
+nfs_export_dir: /data/nfs
+nfs_filesystem_type: ntfs

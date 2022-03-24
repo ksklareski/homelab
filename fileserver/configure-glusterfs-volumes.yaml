@@ -1,0 +1,70 @@
+- name: Disable SELinux
+  ansible.posix.selinux:
+    state: disabled
+  register: selinux
+
+- name: Reboot if selinux disabled
+  ansible.builtin.reboot:
+  when: selinux.reboot_required
+
+- name: Create a volume group on top of /dev/sda and resize the volume group /dev/sda to the maximum possible size
+  community.general.lvol:
+    vg: nfs-vg
+    lv: nfs-lv
+    size: 100%FREE
+    pvs: /dev/sda
+    shrink: false
+    state: absent
+    force: true
+
+- name: Create xfs filesystem on gluster lv
+  community.general.filesystem:
+    fstype: xfs
+    dev: '{{ gluster_lv_dir }}'
+    state: absent
+
+- name: Ensure Gluster brick and mount directories exist.
+  ansible.builtin.file: 'path={{ item }} state=absent mode=0775'
+  with_items:
+    - '{{ gluster_brick_dir }}'
+
+- name: Mount the gluster-lv on the brick dir
+  mount:
+    boot: true
+    path: '{{ gluster_brick_dir }}'
+    src: '{{ gluster_lv_dir }}'
+    fstype: xfs
+    state: absent
+
+- name: Configure Gluster volume.
+  gluster.gluster.gluster_volume:
+    state: started
+    name: '{{ gluster_vol_name }}'
+    brick: '{{ gluster_brick_dir }}/brick'
+    cluster: "{{ groups.gluster | join(',') }}"
+    host: '{{ inventory_hostname }}'
+    force: false
+    state: absent
+
+- name: Install NFS-Ganesha packages
+  ansible.builtin.yum:
+    name:
+      - centos-release-nfs-ganesha30
+      - nfs-ganesha
+      - nfs-ganesha-gluster
+    state: absent
+  register: ganesha
+
+- name: Configure NFS-Ganesha
+  ansible.builtin.copy:
+    src: ./ganesha.conf
+    dest: /etc/ganesha/ganesha.conf
+    state: absent
+  register: ganesha_conf
+
+# - name: Start ganesha service
+#   ansible.builtin.service:
+#     name: nfs-ganesha
+#     enabled: true
+#     state: restarted
+#   when: ganesha.changed or ganesha_conf.changed

@@ -1,0 +1,7 @@
+#!/bin/bash
+
+echo 'Setting hostname to {{ nomad_init_hostname }}'
+hostnamectl set-hostname {{ nomad_init_hostname }}
+
+echo 'Setting IP Address to {{ nomad_init_ip }}'
+ip addr add {{ nomad_init_ip }}/24 dev eth0

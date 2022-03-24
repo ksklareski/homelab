@@ -1,0 +1,35 @@
+- name: Enable WSL
+  ansible.windows.win_optional_feature:
+    name: Microsoft-Windows-Subsystem-Linux
+    state: present
+  register: WSL
+
+- name: Enable VirtualMachinePlatform
+  ansible.windows.win_optional_feature:
+    name: VirtualMachinePlatform
+    state: present
+  register: VMP
+
+- name: Install WSL2 Linux Kernel
+  ansible.windows.win_package:
+    path: '{{ wsl_kernel_path }}'
+    arguments: /quiet /qn /norestart
+    state: present
+  register: kernel
+
+- name: Reboot if WSL components require it
+  ansible.windows.win_reboot:
+  when: kernel.reboot_required or VMP.reboot_required or WSL.reboot_required
+
+- name: Set WSL2 as default version
+  ansible.windows.win_powershell:
+    script: |
+      wsl --set-default-version 2
+
+- name: Install lxrunoffline (wsl management utility)
+  chocolatey.chocolatey.win_chocolatey:
+    name: lxrunoffline
+    version: '{{ lxrunoffline_version }}'
+    source: '{{ choco_repo }}'
+    state: present
+# TODO: Install a WSL container using lxrunoffline

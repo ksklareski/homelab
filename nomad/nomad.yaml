@@ -1,0 +1,108 @@
+- name: Ensure deps are installed
+  ansible.builtin.apt:
+    name:
+      - python3
+      - python3-pip
+      - openssh-server
+      - tmux
+      - wget
+      - unzip
+      - ca-certificates
+      - curl
+      - gnupg
+      - lsb-release
+    update_cache: true
+    state: present
+
+- name: Ensure python docker sdk installed
+  ansible.builtin.pip:
+    name:
+      - docker
+      - docker-compose
+      - python-nomad
+
+- name: Copy nomad dir
+  ansible.builtin.copy:
+    dest: /tmp/nomad
+    src: ./nomad/
+  register: nomaddir
+
+- name: Copy packer dir
+  ansible.builtin.copy:
+    dest: /tmp/packer
+    src: ./packer/
+
+# - name: Enable Nomad repo
+#   ansible.builtin.command: sudo yum-config-manager --add-repo https://rpm.releases.hashicorp.com/RHEL/hashicorp.repo
+
+# - name: Install Docker key
+#   ansible.builtin.command: /bin/bash -c "curl -fsSL https://download.docker.com/linux/ubuntu/gpg | gpg --dearmor -o /usr/share/keyrings/docker-archive-keyring.gpg"
+
+# - name: Enable Docker repo
+#   ansible.builtin.command: echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/docker-archive-keyring.gpg] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" | tee /etc/apt/sources.list.d/docker.list > /dev/null
+
+- name: Install Docker and Nomad
+  ansible.builtin.apt:
+    name:
+      - docker-ce
+      - docker-ce-cli
+      - containerd.io
+      - nomad
+    update_cache: true
+    state: present
+
+- name: Ensure insecure registry is enabled for docker
+  ansible.builtin.copy:
+    dest: /etc/docker/daemon.json
+    src: ./nomad/daemon.json
+  register: dockerregconfig
+
+- name: Restart docker service if needed
+  ansible.builtin.command: service docker restart
+  when: dockerregconfig.changed
+
+- name: Download packer
+  ansible.builtin.command: bash -c "packer || wget https://releases.hashicorp.com/packer/1.7.10/packer_1.7.10_linux_amd64.zip && unzip packer_1.7.10_linux_amd64.zip && mv -f packer /usr/sbin/packer && rm -f packer_1.7.10_linux_amd64.zip"
+
+- name: Start docker service
+  ansible.builtin.systemd:
+    name: docker
+    enabled: true
+    state: started
+
+- name: Create Nomad user
+  ansible.builtin.user:
+    create_home: false
+    home: /etc/nomad.d
+    name: nomad
+    shell: /bin/false
+    state: present
+    system: true
+
+- name: Copy nomad main config
+  ansible.builtin.copy:
+    dest: '/etc/nomad.d/nomad.hcl'
+    src: ./nomad/nomad.hcl
+  register: nomadmain
+
+- name: Copy nomad init client config
+  ansible.builtin.copy:
+    dest: '/etc/nomad.d/client.hcl'
+    src: ./nomad/client.hcl
+  register: nomadclient
+
+- name: Ensure docker nomad networks exist
+  ansible.builtin.command: bash -c "docker network inspect nomad_net || docker network create -d macvlan --subnet=192.168.1.0/24 --gateway=192.168.1.1 -o parent=eth1 nomad_net"
+
+- name: Ensure data dir exists for containers
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+  loop:
+    - /tmp/nomad-server-1
+    - /tmp/nomad-server-2
+    - /tmp/nomad-server-3
+
+- name: Start nomad client
+  ansible.builtin.command: service nomad restart
+  when: nomadclient.changed or nomadmain.changed

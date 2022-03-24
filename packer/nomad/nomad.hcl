@@ -1,0 +1,5 @@
+bind_addr = "0.0.0.0"
+#network_interface = "eth0"
+datacenter = "home"
+data_dir = "/opt/nomad"
+log_level = "DEBUG"

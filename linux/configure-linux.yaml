@@ -1,0 +1,69 @@
+- name: Set hostname
+  ansible.builtin.hostname:
+    name: "{{ inventory_hostname }}"
+    use: systemd
+  register: hostname
+
+- name: Set ip address
+  ansible.builtin.template:
+    src: ./linux/ifcfg-static.j2
+    dest: "/etc/sysconfig/network-scripts/ifcfg-{{ ansible_default_ipv4.interface }}"
+  register: ipconfig
+  when: ansible_distribution == "CentOS" or ("Rocky" in ansible_distribution)
+
+- name: Disable SELinux
+  ansible.posix.selinux:
+    state: disabled
+  register: selinux
+  when: ansible_distribution == "CentOS" or ("Rocky" in ansible_distribution)
+
+- name: Install CentOS packages
+  ansible.builtin.yum:
+    name: 
+      - bind-utils
+      - epel-release
+      - openssh-server
+    state: present
+    update_cache: true
+  when: ansible_distribution == "CentOS" or ("Rocky" in ansible_distribution)
+
+- name: Install Ubuntu packages
+  ansible.builtin.apt:
+      name: 
+        - dnsutils
+        - openssh-server
+      state: present
+      update_cache: true
+  when: ansible_distribution == "Ubuntu"
+
+- name: Add public key
+  ansible.posix.authorized_key:
+    user: root
+    state: present
+    key: "{{ lookup('file', '/Users/kylesklareski/.ssh/id_rsa.pub') }}"
+
+- name: Copy sshd config
+  ansible.builtin.copy:
+    src: ./linux/sshd_config
+    dest: /etc/ssh/sshd_config
+  register: sshdconf
+
+- name: Restart ssh if config changed
+  ansible.builtin.systemd:
+    name: sshd
+    state: restarted
+  when: sshdconf.changed
+
+- name: Restart networking service if needed
+  ansible.builtin.systemd:
+    name: NetworkManager
+    state: restarted
+  when: ipconfig.changed
+
+- name: Restart machine if hostname changed
+  ansible.builtin.reboot:
+  when: hostname.changed
+
+- name: Restart if selinux changed
+  ansible.builtin.reboot:
+  when: (ansible_distribution == "CentOS" or ("Rocky" in ansible_distribution)) and (not hostname.changed) and selinux.reboot_required

@@ -1,0 +1,45 @@
+version: '3.9'
+
+networks:
+  nomad_net:
+    external: true
+
+services:
+  nomad-server:
+    build: .
+    entrypoint:
+      [
+        'nomad',
+        'agent',
+        '-bootstrap-expect=1',
+        '-node=nomad-server-1',
+        '-config=/etc/nomad.d',
+      ]
+    networks:
+      nomad_net:
+        ipv4_address: '192.168.1.221'
+    ports:
+      - '4646:4646'
+      - '4647:4647'
+      - '4648:4648'
+      - '8500:8500'
+    dns:
+      - '192.168.1.1'
+    restart: unless-stopped
+    volumes:
+      - './nomad.hcl:/etc/nomad.d/nomad.hcl'
+      - './server.hcl:/etc/nomad.d/server.hcl'
+      - '/tmp/nomad-server-1:/opt/nomad'
+
+  # nomad-client:
+  #   entrypoint: ['nomad', 'agent', '-client', '-config=/etc/nomad.d']
+  #   image: nomad-ubuntu:latest
+  #   ports:
+  #     - '4746:4646'
+  #     - '4747:4647'
+  #     - '4748:4748'
+  #   privileged: true
+  #   restart: unless-stopped
+  #   volumes:
+  #     - '/var/run/docker.sock:/var/run/docker.sock'
+  #     - '/etc/nomad.d:/etc/nomad.d'
